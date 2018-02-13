@@ -1,0 +1,9 @@
+name: Redirect Entity Support for Content Hub
+description: Implements a specific use case for using redirect entities with Content Hub.
+package: Acquia Content Hub
+
+type: module
+core: 8.x
+
+dependencies:
+  - acquia_contenthub:acquia_contenthub

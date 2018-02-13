@@ -1,0 +1,118 @@
+<?php
+
+use Drupal\Core\Entity\EntityTypeInterface;
+use Drupal\Core\Field\BaseFieldDefinition;
+use Acquia\ContentHubClient\Entity as ContentHubEntity;
+use Drupal\Component\Serialization\Json;
+use Acquia\ContentHubClient\Attribute;
+
+const MY_MODULE_REDIRECT_ATTRIBUTE = 'redirect_entity_dependency';
+
+/**
+ * Allows modules to modify the CDF before it is sent to the Content Hub.
+ *
+ * Common Data Format (CDF): https://docs.acquia.com/content-hub/cdf.
+ *
+ * This is very useful to modify the CDF (usually its attributes) before
+ * it is sent to the Content Hub during the normalization process.
+ * Note that the changes will be reflected in the entity published in Content
+ * Hub, but the local Drupal entity will not be affected.
+ *
+ * @param \Acquia\ContentHubClient\Entity $contenthub_entity
+ *   The Content Hub CDF.
+ */
+function my_module_acquia_contenthub_cdf_from_drupal_alter(ContentHubEntity $contenthub_entity) {
+
+  // Adding changes to the 'redirect' entity types.
+  if ($contenthub_entity->getType() == 'redirect') {
+
+    // Always check that the changes have already been applied, because the
+    // normalizer could be called more than once during the export process.
+    if ($contenthub_entity->getAttribute('langcode') === FALSE) {
+
+      // Setting up langcode.
+      $language_field = $contenthub_entity->getAttribute('language');
+      $contenthub_entity->setAttribute('langcode', $language_field);
+      $contenthub_entity->removeAttribute('language');
+
+      // If we have manage to set the new attribute to store the reference
+      // UUID for the entity that will produce the redirection, then we can
+      // safely delete the 'redirect_redirect' attribute so that we do not
+      // confuse the denormalization of the entity as we will have to re-
+      // create the deleted attribute before importing.
+      if ($contenthub_entity->getAttribute(MY_MODULE_REDIRECT_ATTRIBUTE) !== FALSE) {
+        $contenthub_entity->removeAttribute('redirect_redirect');
+      }
+    }
+  }
+}
+
+/**
+ * Allows modules to modify the CDF before converting to Drupal Entity.
+ *
+ * Common Data Format (CDF): https://docs.acquia.com/content-hub/cdf.
+ *
+ * This is useful to modify the CDF that has been fetched from the Content
+ * Hub before it has been converted to Drupal Entity during the denormalization
+ * process.
+ * Note that we these changes affect the local entity imported from Content Hub
+ * but do not affect the entity in Content Hub itself.
+ *
+ * @param \Acquia\ContentHubClient\Entity $contenthub_entity
+ *   The Content Hub CDF.
+ */
+function my_module_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $contenthub_entity) {
+  if ($contenthub_entity->getType() == 'redirect') {
+
+    /** @var \Drupal\Core\Entity\EntityRepositoryInterface $entity_repository */
+    $entity_repository = \Drupal::service("entity.repository");
+
+    // Always check that the changes have already been applied, because the
+    // normalizer could be called more than once during the export process.
+    if ($contenthub_entity->getAttribute('language') === FALSE) {
+      $language_field = $contenthub_entity->getAttribute('langcode');
+      $contenthub_entity->setAttribute('language', $language_field);
+    }
+    // Setting back the 'redirect_redirect' field.
+    if ($redirect_attribute = $contenthub_entity->getAttribute(MY_MODULE_REDIRECT_ATTRIBUTE)) {
+      $redirect_redirect = new Attribute(Attribute::TYPE_ARRAY_STRING);
+      $values = $redirect_attribute->getValues();
+      foreach ($values as $language => $value) {
+        $uuid = reset($value);
+
+        // Try lo load a node and if it does not exists try with taxonomy term.
+        $entity = $entity_repository->loadEntityByUuid('node', $uuid);
+        $entity = isset($entity) ?: $entity_repository->loadEntityByUuid('taxonomy_term', $uuid);
+
+        if ($entity) {
+          // Setting the redirect value array.
+          $redirect_value = [
+            'uri' => 'internal:' . $entity->toUrl(),
+            'title' => NULL,
+            'options' => [],
+          ];
+          $redirect_redirect->setValue($language, Json::encode($redirect_value));
+        }
+      }
+      $contenthub_entity->setAttribute('redirect_redirect', $redirect_redirect);
+    }
+  }
+}
+
+/**
+ * Implements hook_entity_base_field_info().
+ */
+function my_module_entity_base_field_info(EntityTypeInterface $entity_type) {
+  if ($entity_type
+      ->id() == 'redirect') {
+    $fields = array();
+    $fields[MY_MODULE_REDIRECT_ATTRIBUTE] = BaseFieldDefinition::create('entity_reference')
+      ->setLabel(t('Redirect dependencies'))
+      ->setDescription(t('Computed field to add entity dependencies to redirect entities.'))
+      ->setComputed(TRUE)
+      ->setCustomStorage(TRUE)
+      ->setClass('\\Drupal\\my_module\\Field\\EntityReferenceRedirect');
+    return $fields;
+  }
+}
+
