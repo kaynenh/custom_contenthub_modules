@@ -1,5 +1,5 @@
 name: Redirect Entity Support for Content Hub
-description: Implements a specific use case for using redirect entities with Content Hub.
+description: Implements IBM use case for using redirect entities with Content Hub.
 package: Acquia Content Hub
 
 type: module

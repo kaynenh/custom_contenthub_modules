@@ -1,5 +1,5 @@
 <?php
-namespace Drupal\my_module\Field;
+namespace Drupal\ibm_contenthub_redirect\Field;
 
 use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Field\EntityReferenceFieldItemList;

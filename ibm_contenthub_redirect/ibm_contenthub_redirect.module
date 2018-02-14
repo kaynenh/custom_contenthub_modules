@@ -20,7 +20,7 @@ const MY_MODULE_REDIRECT_ATTRIBUTE = 'redirect_entity_dependency';
  * @param \Acquia\ContentHubClient\Entity $contenthub_entity
  *   The Content Hub CDF.
  */
-function my_module_acquia_contenthub_cdf_from_drupal_alter(ContentHubEntity $contenthub_entity) {
+function ibm_contenthub_redirect_acquia_contenthub_cdf_from_drupal_alter(ContentHubEntity $contenthub_entity) {
 
   // Adding changes to the 'redirect' entity types.
   if ($contenthub_entity->getType() == 'redirect') {
@@ -60,7 +60,7 @@ function my_module_acquia_contenthub_cdf_from_drupal_alter(ContentHubEntity $con
  * @param \Acquia\ContentHubClient\Entity $contenthub_entity
  *   The Content Hub CDF.
  */
-function my_module_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $contenthub_entity) {
+function ibm_contenthub_redirect_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $contenthub_entity) {
   if ($contenthub_entity->getType() == 'redirect') {
 
     /** @var \Drupal\Core\Entity\EntityRepositoryInterface $entity_repository */
@@ -111,7 +111,7 @@ function my_module_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $conten
 /**
  * Implements hook_entity_base_field_info().
  */
-function my_module_entity_base_field_info(EntityTypeInterface $entity_type) {
+function ibm_contenthub_redirect_entity_base_field_info(EntityTypeInterface $entity_type) {
   if ($entity_type->id() === 'redirect') {
     /** @var \Drupal\acquia_contenthub\EntityManager $entity_manager * */
     $entity_manager = \Drupal::service("acquia_contenthub.entity_manager");
@@ -129,7 +129,7 @@ function my_module_entity_base_field_info(EntityTypeInterface $entity_type) {
         ->setDescription(t('Computed field to add entity dependencies to redirect entities.'))
         ->setComputed(TRUE)
         ->setCustomStorage(TRUE)
-        ->setClass('\\Drupal\\my_module\\Field\\EntityReferenceRedirect');
+        ->setClass('\\Drupal\\ibm_contenthub_redirect\\Field\\EntityReferenceRedirect');
       return $fields;
     }
   }
