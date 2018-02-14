@@ -3,7 +3,6 @@
 use Drupal\Core\Entity\EntityTypeInterface;
 use Drupal\Core\Field\BaseFieldDefinition;
 use Acquia\ContentHubClient\Entity as ContentHubEntity;
-use Drupal\Component\Serialization\Json;
 use Acquia\ContentHubClient\Attribute;
 
 const MY_MODULE_REDIRECT_ATTRIBUTE = 'redirect_entity_dependency';
@@ -71,30 +70,40 @@ function my_module_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $conten
     // normalizer could be called more than once during the export process.
     if ($contenthub_entity->getAttribute('language') === FALSE) {
       $language_field = $contenthub_entity->getAttribute('langcode');
-      $contenthub_entity->setAttribute('language', $language_field);
+      $contenthub_entity['attributes']['language'] = $language_field;
     }
     // Setting back the 'redirect_redirect' field.
     if ($redirect_attribute = $contenthub_entity->getAttribute(MY_MODULE_REDIRECT_ATTRIBUTE)) {
       $redirect_redirect = new Attribute(Attribute::TYPE_ARRAY_STRING);
-      $values = $redirect_attribute->getValues();
+      $values = $redirect_attribute['value'];
       foreach ($values as $language => $value) {
         $uuid = reset($value);
 
         // Try lo load a node and if it does not exists try with taxonomy term.
         $entity = $entity_repository->loadEntityByUuid('node', $uuid);
-        $entity = isset($entity) ?: $entity_repository->loadEntityByUuid('taxonomy_term', $uuid);
+        $entity = isset($entity) ? $entity : $entity_repository->loadEntityByUuid('taxonomy_term', $uuid);
 
         if ($entity) {
+
+          $redirect_redirect = (array) $redirect_redirect;
+          $url = $entity->toUrl();
           // Setting the redirect value array.
+
           $redirect_value = [
-            'uri' => 'internal:' . $entity->toUrl(),
+            'uri' => 'internal:' . base_path() . $url->getInternalPath(),
             'title' => NULL,
             'options' => [],
           ];
-          $redirect_redirect->setValue($language, Json::encode($redirect_value));
+          $json_value = json_encode($redirect_value, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+          $redirect_redirect['value'] = [
+            $language => [
+              $json_value,
+            ],
+          ];
         }
       }
-      $contenthub_entity->setAttribute('redirect_redirect', $redirect_redirect);
+      $contenthub_entity['attributes']['redirect_redirect'] = $redirect_redirect;
+      $contenthub_entity->removeAttribute(MY_MODULE_REDIRECT_ATTRIBUTE);
     }
   }
 }
@@ -103,16 +112,26 @@ function my_module_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $conten
  * Implements hook_entity_base_field_info().
  */
 function my_module_entity_base_field_info(EntityTypeInterface $entity_type) {
-  if ($entity_type
-      ->id() == 'redirect') {
-    $fields = array();
-    $fields[MY_MODULE_REDIRECT_ATTRIBUTE] = BaseFieldDefinition::create('entity_reference')
-      ->setLabel(t('Redirect dependencies'))
-      ->setDescription(t('Computed field to add entity dependencies to redirect entities.'))
-      ->setComputed(TRUE)
-      ->setCustomStorage(TRUE)
-      ->setClass('\\Drupal\\my_module\\Field\\EntityReferenceRedirect');
-    return $fields;
+  if ($entity_type->id() === 'redirect') {
+    /** @var \Drupal\acquia_contenthub\EntityManager $entity_manager * */
+    $entity_manager = \Drupal::service("acquia_contenthub.entity_manager");
+    $redirect_enabled = FALSE;
+
+    /** @var \Drupal\acquia_contenthub\Entity\ContentHubEntityTypeConfig $redirect_config_entity */
+    if ($redirect_config_entity = $entity_manager->getContentHubEntityTypeConfigurationEntity('redirect')) {
+      $redirect_enabled = $redirect_config_entity->isEnableIndex('redirect');
+    }
+
+    if ($redirect_enabled) {
+      $fields = array();
+      $fields[MY_MODULE_REDIRECT_ATTRIBUTE] = BaseFieldDefinition::create('entity_reference')
+        ->setLabel(t('Redirect dependencies'))
+        ->setDescription(t('Computed field to add entity dependencies to redirect entities.'))
+        ->setComputed(TRUE)
+        ->setCustomStorage(TRUE)
+        ->setClass('\\Drupal\\my_module\\Field\\EntityReferenceRedirect');
+      return $fields;
+    }
   }
 }
 
