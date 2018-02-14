@@ -46,12 +46,10 @@ class EntityReferenceRedirect extends EntityReferenceFieldItemList {
             break;
         }
         // If we found an internal path.
-        if ($entity !== FALSE) {
+        if ($entity !== FALSE && $this->getSetting('target_type') === $entity['type']) {
           /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
           $entity_type_manager = \Drupal::entityTypeManager();
-          if ($entity = $entity_type_manager->getStorage($entity['type'])
-            ->load($entity['id'])
-          ) {
+          if ($entity = $entity_type_manager->getStorage($entity['type'])->load($entity['id'])) {
             // Create an entity reference attribute so that the entity it
             // points to becomes a dependency of the "redirect" entity.
             $url_list[$delta] = $this->createItem($delta, $entity->id());

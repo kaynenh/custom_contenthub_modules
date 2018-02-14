@@ -5,7 +5,8 @@ use Drupal\Core\Field\BaseFieldDefinition;
 use Acquia\ContentHubClient\Entity as ContentHubEntity;
 use Acquia\ContentHubClient\Attribute;
 
-const MY_MODULE_REDIRECT_ATTRIBUTE = 'redirect_entity_dependency';
+const IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE = 'ibm_contenthub_redirect_entity_node';
+const IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM = 'ibm_contenthub_redirect_entity_taxonomy_term';
 
 /**
  * Allows modules to modify the CDF before it is sent to the Content Hub.
@@ -39,7 +40,8 @@ function ibm_contenthub_redirect_acquia_contenthub_cdf_from_drupal_alter(Content
       // safely delete the 'redirect_redirect' attribute so that we do not
       // confuse the denormalization of the entity as we will have to re-
       // create the deleted attribute before importing.
-      if ($contenthub_entity->getAttribute(MY_MODULE_REDIRECT_ATTRIBUTE) !== FALSE) {
+      if ($contenthub_entity->getAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE) !== FALSE ||
+          $contenthub_entity->getAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM) !== FALSE ) {
         $contenthub_entity->removeAttribute('redirect_redirect');
       }
     }
@@ -72,18 +74,22 @@ function ibm_contenthub_redirect_acquia_contenthub_cdf_from_hub_alter(ContentHub
       $language_field = $contenthub_entity->getAttribute('langcode');
       $contenthub_entity['attributes']['language'] = $language_field;
     }
+
+    // Loading the two fields and checking which ones of those have data.
+    $redirect_attribute_node = $contenthub_entity->getAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE);
+    $redirect_attribute_term = $contenthub_entity->getAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM);
+    $redirect_attribute = $redirect_attribute_node ? $redirect_attribute_node : $redirect_attribute_term;
+    $entity_type = $redirect_attribute_node ? 'node' : 'taxonomy_term';
+
     // Setting back the 'redirect_redirect' field.
-    if ($redirect_attribute = $contenthub_entity->getAttribute(MY_MODULE_REDIRECT_ATTRIBUTE)) {
+    if ($redirect_attribute) {
       $redirect_redirect = new Attribute(Attribute::TYPE_ARRAY_STRING);
       $values = $redirect_attribute['value'];
       foreach ($values as $language => $value) {
         $uuid = reset($value);
 
-        // Try lo load a node and if it does not exists try with taxonomy term.
-        $entity = $entity_repository->loadEntityByUuid('node', $uuid);
-        $entity = isset($entity) ? $entity : $entity_repository->loadEntityByUuid('taxonomy_term', $uuid);
-
-        if ($entity) {
+        // Try to load the entity.
+        if ($entity = $entity_repository->loadEntityByUuid($entity_type, $uuid)) {
 
           $redirect_redirect = (array) $redirect_redirect;
           $url = $entity->toUrl();
@@ -103,7 +109,12 @@ function ibm_contenthub_redirect_acquia_contenthub_cdf_from_hub_alter(ContentHub
         }
       }
       $contenthub_entity['attributes']['redirect_redirect'] = $redirect_redirect;
-      $contenthub_entity->removeAttribute(MY_MODULE_REDIRECT_ATTRIBUTE);
+      if ($entity_type === 'node') {
+        $contenthub_entity->removeAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE);
+      }
+      else {
+        $contenthub_entity->removeAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM);
+      }
     }
   }
 }
@@ -124,9 +135,16 @@ function ibm_contenthub_redirect_entity_base_field_info(EntityTypeInterface $ent
 
     if ($redirect_enabled) {
       $fields = array();
-      $fields[MY_MODULE_REDIRECT_ATTRIBUTE] = BaseFieldDefinition::create('entity_reference')
+      $fields[IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE] = BaseFieldDefinition::create('entity_reference')
         ->setLabel(t('Redirect dependencies'))
-        ->setDescription(t('Computed field to add entity dependencies to redirect entities.'))
+        ->setDescription(t('Computed field to add entity dependencies to node redirect entities.'))
+        ->setComputed(TRUE)
+        ->setCustomStorage(TRUE)
+        ->setClass('\\Drupal\\ibm_contenthub_redirect\\Field\\EntityReferenceRedirect');
+      $fields[IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM] = BaseFieldDefinition::create('entity_reference')
+        ->setLabel(t('Redirect dependencies'))
+        ->setDescription(t('Computed field to add entity dependencies to taxonomy_term redirect entities.'))
+        ->setSetting('target_type', 'taxonomy_term')
         ->setComputed(TRUE)
         ->setCustomStorage(TRUE)
         ->setClass('\\Drupal\\ibm_contenthub_redirect\\Field\\EntityReferenceRedirect');
