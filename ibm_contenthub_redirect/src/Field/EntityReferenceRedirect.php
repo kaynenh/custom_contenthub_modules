@@ -17,44 +17,15 @@ class EntityReferenceRedirect extends EntityReferenceFieldItemList {
       return;
     }
     $url_list = [];
-    foreach ($this->getEntity()->get('redirect_redirect')->getValue() as $delta => $redirect_item) {
-      $uri = $redirect_item['uri'];
-      $entity = FALSE;
-      list($source, $url) = explode(':', $uri);
-      if ($source === 'internal') {
-        // Checking for node URL.
-        $path = pathinfo($url);
-        switch ($path['dirname']) {
-          case '/node':
-            $nid = $path['filename'];
-            if (is_numeric($nid)) {
-              $entity = [
-                'type' => 'node',
-                'id' => $nid,
-              ];
-            }
-            break;
-
-          case '/taxonomy/term':
-            $tid = $path['filename'];
-            if (is_numeric($tid)) {
-              $entity = [
-                'type' => 'taxonomy_term',
-                'id' => $tid,
-              ];
-            }
-            break;
-        }
-        // If we found an internal path.
-        if ($entity !== FALSE && $this->getSetting('target_type') === $entity['type']) {
-          /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
-          $entity_type_manager = \Drupal::entityTypeManager();
-          if ($entity = $entity_type_manager->getStorage($entity['type'])->load($entity['id'])) {
-            // Create an entity reference attribute so that the entity it
-            // points to becomes a dependency of the "redirect" entity.
-            $url_list[$delta] = $this->createItem($delta, $entity->id());
-          }
-        }
+    $entity = ibm_contenthub_redirect_extract_destination_entity($this->getEntity());
+    // If we found an internal path that points to an existent entity.
+    if ($entity !== FALSE && $this->getSetting('target_type') === $entity['type']) {
+      /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
+      $entity_type_manager = \Drupal::entityTypeManager();
+      if ($entity = $entity_type_manager->getStorage($entity['type'])->load($entity['id'])) {
+        // Create an entity reference attribute so that the entity it
+        // points to becomes a dependency of the "redirect" entity.
+        $url_list[] = $this->createItem(0, $entity->id());
       }
     }
     $this->list = $url_list;

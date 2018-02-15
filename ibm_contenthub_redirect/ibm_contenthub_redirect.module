@@ -107,12 +107,15 @@ function ibm_contenthub_redirect_acquia_contenthub_cdf_from_hub_alter(ContentHub
             ],
           ];
         }
+        else {
+          // We did not find the entity then do not try to save this redirect.
+        }
       }
       $contenthub_entity['attributes']['redirect_redirect'] = $redirect_redirect;
       if ($entity_type === 'node') {
         $contenthub_entity->removeAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE);
       }
-      else {
+      elseif ($entity_type == 'taxonomy_term') {
         $contenthub_entity->removeAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM);
       }
     }
@@ -153,3 +156,69 @@ function ibm_contenthub_redirect_entity_base_field_info(EntityTypeInterface $ent
   }
 }
 
+/**
+ * Implements hook_acquia_contenthub_is_eligible_entity().
+ *
+ * @param object $entity
+ *   The Drupal entity.
+ *
+ * @return bool
+ *   TRUE if the entity should be published, FALSE otherwise.
+ */
+function ibm_contenthub_redirect_acquia_contenthub_is_eligible_entity($entity) {
+  if ($entity->getEntityTypeId() === 'redirect') {
+    $dest_entity = ibm_contenthub_redirect_extract_destination_entity($entity);
+    /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
+    $entity_type_manager = \Drupal::entityTypeManager();
+    if ($destination_entity = $entity_type_manager->getStorage($dest_entity['type'])->load($dest_entity['id'])) {
+      /** @var \Drupal\acquia_contenthub\EntityManager $entity_manager */
+      $entity_manager = \Drupal::service("acquia_contenthub.entity_manager");
+      return $entity_manager->isPublished($destination_entity);
+    }
+    return FALSE;
+  }
+}
+
+/**
+ * Extracts the entities that are needed to construct the destination path.
+ *
+ * @param object $redirect_entity
+ *   The Redirect Entity.
+ *
+ * @return array|bool
+ *   An array of entity type and id referenced by the destination path or FALSE.
+ */
+function ibm_contenthub_redirect_extract_destination_entity($redirect_entity) {
+  $redirect = $redirect_entity->get('redirect_redirect')->getValue();
+  // Obtaining only the unique value.
+  $redirect_item = reset($redirect);
+  $uri = $redirect_item['uri'];
+  $entity = FALSE;
+  list($source, $url) = explode(':', $uri);
+  if ($source === 'internal') {
+    // Checking for node URL.
+    $path = pathinfo($url);
+    switch ($path['dirname']) {
+      case '/node':
+        $nid = $path['filename'];
+        if (is_numeric($nid)) {
+          $entity = [
+            'type' => 'node',
+            'id' => $nid,
+          ];
+        }
+        break;
+
+      case '/taxonomy/term':
+        $tid = $path['filename'];
+        if (is_numeric($tid)) {
+          $entity = [
+            'type' => 'taxonomy_term',
+            'id' => $tid,
+          ];
+        }
+        break;
+    }
+  }
+  return $entity;
+}
