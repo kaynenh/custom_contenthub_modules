@@ -59,12 +59,19 @@ function ibm_contenthub_filepath_acquia_contenthub_cdf_from_hub_alter(ContentHub
       // Create directory.
       $path = pathinfo($uri);
       $dir = $path['dirname'];
-      if (!is_dir($dir) || !is_writable($dir)) {
-        if (!file_prepare_directory($dir, FILE_CREATE_DIRECTORY)) {
-          // Log that directory could not be created.
-          \Drupal::logger('ibm_contenthub_filepath')->error('Cannot create directory !dir. Please check filesystem permissions.', [
-            '!dir' => $dir,
-          ]);
+      list($scheme, $dirs) = explode('://', $dir);
+      $directories = explode('/', $dirs);
+      $filepath = $scheme . ':/';
+      foreach ($directories as $directory) {
+        $filepath = $filepath . '/' . $directory;
+        if (!is_dir($filepath) || !is_writable($filepath)) {
+          if (!file_prepare_directory($filepath, FILE_CREATE_DIRECTORY)) {
+            // Log that directory could not be created.
+            \Drupal::logger('ibm_contenthub_filepath')
+              ->error('Cannot create files subdirectory "!dir". Please check filesystem permissions.', [
+                '!dir' => $filepath,
+              ]);
+          }
         }
       }
     }
