@@ -23,14 +23,12 @@ function ibm_contenthub_filepath_acquia_contenthub_cdf_from_drupal_alter(Content
   // Adding changes to the 'file' entity types.
   if ($contenthub_entity->getType() == 'file') {
     $uuid = $contenthub_entity->getUuid();
-    /** @var FileEn $file */
-    $file =  \Drupal::service("entity.repository")->loadEntityByUuid('file', $uuid);
-    $uri = $file->getFileUri();
 
     // Always check that the changes have already been applied, because the
     // normalizer could be called more than once during the export process.
     if ($contenthub_entity->getAttribute(IBM_CONTENTHUB_ATTRIBUTE_FILEURI) === FALSE) {
-
+      $file =  \Drupal::service("entity.repository")->loadEntityByUuid('file', $uuid);
+      $uri = $file->getFileUri();
       $attribute = new Attribute(Attribute::TYPE_STRING);
       $attribute->setValue($uri);
 
@@ -57,12 +55,17 @@ function ibm_contenthub_filepath_acquia_contenthub_cdf_from_drupal_alter(Content
 function ibm_contenthub_filepath_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $contenthub_entity) {
   if ($contenthub_entity->getType() == 'file') {
     $uri = $contenthub_entity->getAttribute(IBM_CONTENTHUB_ATTRIBUTE_FILEURI)->getValue();
-    // Create directories.
-    $path = pathinfo($uri);
-    $dir = $path['dirname'];
-    if (!is_dir($dir) || !is_writable($dir)) {
-      if (!file_prepare_directory($dir, FILE_CREATE_DIRECTORY)) {
-        // Log that directory could not be created.
+    if (substr($uri, 0, 9) === 'public://') {
+      // Create directory.
+      $path = pathinfo($uri);
+      $dir = $path['dirname'];
+      if (!is_dir($dir) || !is_writable($dir)) {
+        if (!file_prepare_directory($dir, FILE_CREATE_DIRECTORY)) {
+          // Log that directory could not be created.
+          \Drupal::logger('ibm_contenthub_filepath')->error('Cannot create directory !dir. Please check filesystem permissions.', [
+            '!dir' => $dir,
+          ]);
+        }
       }
     }
 
