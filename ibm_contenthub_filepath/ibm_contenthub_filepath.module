@@ -56,9 +56,6 @@ function ibm_contenthub_filepath_acquia_contenthub_cdf_from_hub_alter(ContentHub
   if ($contenthub_entity->getType() == 'file' && !empty($contenthub_entity->getAttribute(IBM_CONTENTHUB_ATTRIBUTE_FILEURI))) {
     $attribute = $contenthub_entity->getAttribute(IBM_CONTENTHUB_ATTRIBUTE_FILEURI);
     $uri = isset($attribute['value']['und']) ? $attribute['value']['und'] : NULL;
-    if (empty($uri)) {
-      return;
-    }
     if (substr($uri, 0, 9) === 'public://') {
       // Create directory.
       $path = pathinfo($uri);
