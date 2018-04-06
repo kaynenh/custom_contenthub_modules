@@ -1,0 +1,9 @@
+name: Create File Directories for File Entities
+description: Creates file directories for file entities coming from Content Hub.
+package: Acquia Content Hub
+
+type: module
+core: 8.x
+
+dependencies:
+  - acquia_contenthub:acquia_contenthub
