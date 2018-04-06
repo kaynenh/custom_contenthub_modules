@@ -6,14 +6,12 @@ use Acquia\ContentHubClient\Attribute;
 const IBM_CONTENTHUB_ATTRIBUTE_FILEURI = '_file_uri';
 
 /**
+ * Implements hook_acquia_contenthub_cdf_from_drupal_alter().
+ *
  * Allows modules to modify the CDF before it is sent to the Content Hub.
- *
- * Common Data Format (CDF): https://docs.acquia.com/content-hub/cdf.
- *
- * This is very useful to modify the CDF (usually its attributes) before
- * it is sent to the Content Hub during the normalization process.
- * Note that the changes will be reflected in the entity published in Content
- * Hub, but the local Drupal entity will not be affected.
+ * Adds an additional attribute to file entities pointing to the local File URI
+ * so that the same URI can be used in the subscribing site when recreating this
+ * file.
  *
  * @param \Acquia\ContentHubClient\Entity $contenthub_entity
  *   The Content Hub CDF.
@@ -39,15 +37,11 @@ function ibm_contenthub_filepath_acquia_contenthub_cdf_from_drupal_alter(Content
 }
 
 /**
+ * Implements hook_acquia_contenthub_cdf_from_hub_alter().
+ *
  * Allows modules to modify the CDF before converting to Drupal Entity.
- *
- * Common Data Format (CDF): https://docs.acquia.com/content-hub/cdf.
- *
- * This is useful to modify the CDF that has been fetched from the Content
- * Hub before it has been converted to Drupal Entity during the denormalization
- * process.
- * Note that we these changes affect the local entity imported from Content Hub
- * but do not affect the entity in Content Hub itself.
+ * In this case we are using a particular attribute in file entities to create
+ * directories in the filesystem that will be used to save those files.
  *
  * @param \Acquia\ContentHubClient\Entity $contenthub_entity
  *   The Content Hub CDF.
