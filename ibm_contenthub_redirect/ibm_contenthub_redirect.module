@@ -167,13 +167,16 @@ function ibm_contenthub_redirect_entity_base_field_info(EntityTypeInterface $ent
  */
 function ibm_contenthub_redirect_acquia_contenthub_is_eligible_entity($entity) {
   if ($entity->getEntityTypeId() === 'redirect') {
-    $dest_entity = ibm_contenthub_redirect_extract_destination_entity($entity);
-    /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
-    $entity_type_manager = \Drupal::entityTypeManager();
-    if ($destination_entity = $entity_type_manager->getStorage($dest_entity['type'])->load($dest_entity['id'])) {
-      /** @var \Drupal\acquia_contenthub\EntityManager $entity_manager */
-      $entity_manager = \Drupal::service("acquia_contenthub.entity_manager");
-      return $entity_manager->isPublished($destination_entity);
+    if ($dest_entity = ibm_contenthub_redirect_extract_destination_entity($entity)) {
+      /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
+      $entity_type_manager = \Drupal::entityTypeManager();
+      if ($destination_entity = $entity_type_manager->getStorage($dest_entity['type'])
+        ->load($dest_entity['id'])
+      ) {
+        /** @var \Drupal\acquia_contenthub\EntityManager $entity_manager */
+        $entity_manager = \Drupal::service("acquia_contenthub.entity_manager");
+        return $entity_manager->isPublished($destination_entity);
+      }
     }
     return FALSE;
   }
