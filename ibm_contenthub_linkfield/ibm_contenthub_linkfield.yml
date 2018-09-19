@@ -1,0 +1,9 @@
+name: Support for custom links in Content Hub.
+description: Implements IBM use case for using custom links with Content Hub.
+package: Acquia Content Hub
+
+type: module
+core: 8.x
+
+dependencies:
+  - acquia_contenthub:acquia_contenthub
