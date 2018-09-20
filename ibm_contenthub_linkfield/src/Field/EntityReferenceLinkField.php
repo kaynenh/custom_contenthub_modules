@@ -17,7 +17,8 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
       return;
     }
     $url_list = [];
-    $entity = ibm_contenthub_redirect_extract_destination_entity($this->getEntity());
+    $field_name = $this->getFieldDefinition()->getName();
+    $entity = ibm_contenthub_linkfield_extract_destination_entities($this->getEntity(), $field_name);
     // If we found an internal path that points to an existent entity.
     if ($entity !== FALSE && $this->getSetting('target_type') === $entity['type']) {
       /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */

@@ -69,7 +69,7 @@ function ibm_contenthub_linkfield_entity_base_field_info(EntityTypeInterface $en
  * @return array
  *   The entities.
  */
-function ibm_contenthub_linkfield_extract_destination_entities(NodeInterface $entity) {
+function ibm_contenthub_linkfield_extract_destination_entities(NodeInterface $entity, $field_name) {
   $output = [];
   $fields = $entity->getFields();
   $global_link_fields = \Drupal::service('entity_field.manager')->getFieldMapByFieldType('link');
@@ -99,6 +99,15 @@ function ibm_contenthub_linkfield_extract_destination_entities(NodeInterface $en
   return $output;
 }
 
+/**
+ * Helper function to obtain the UUID from NID.
+ *
+ * @param int $nid
+ *   The node nid.
+ *
+ * @return string
+ *   The node UUID.
+ */
 function ibm_contenthub_linkfield_get_node_uuid_from_nid($nid) {
   $query = \Drupal::database()->select('node')
     ->fields('node', ['uuid']);
