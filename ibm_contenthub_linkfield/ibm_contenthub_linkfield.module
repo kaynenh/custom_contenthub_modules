@@ -1,5 +1,10 @@
 <?php
 
+/**
+ * @file
+ * Implementation of Link Fields for IBM Use Case.
+ */
+
 use Drupal\Core\Entity\EntityTypeInterface;
 use Drupal\Core\Field\BaseFieldDefinition;
 use Drupal\node\NodeInterface;
@@ -25,44 +30,55 @@ const IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT = 'ibm_contenthub_link_node_fr
 function ibm_contenthub_linkfield_acquia_contenthub_cdf_from_drupal_alter(ContentHubEntity $contenthub_entity) {
   // Adding changes to the 'redirect' entity types.
   if ($contenthub_entity->getType() == 'node') {
-    $bundle = $contenthub_entity->getAttribute('type')->getValue();
+    $entity_repository = \Drupal::service("entity.repository");
+    if ($entity = $entity_repository->loadEntityByUuid("node", $contenthub_entity->getUuid())) {
+      // Obtain all the link fields in the node.
+      $link_fields = ibm_contenthub_linkfield_extract_destination_entities($entity);
 
+      // For each link field, change the NID to UUID in each URI.
+      foreach ($link_fields as $name => $data) {
+        $values = $contenthub_entity->getAttribute($name)->getValues();
+        foreach ($values as $language => $value) {
+          foreach ($value as $key => $item) {
+            $val = json_decode($item, TRUE);
+            $uri = $val['uri'];
+            foreach ($link_fields[$name]['node_path']['nid'] as $i => $nid) {
+              $uuid = $link_fields[$name]['node_path']['uuid'][$i];
+              $uri = str_replace($nid, $uuid, $uri);
+            }
+            foreach ($link_fields[$name]['node_fragment']['nid'] as $i => $nid) {
+              $uuid = $link_fields[$name]['node_fragment']['uuid'][$i];
+              $uri = str_replace($nid, $uuid, $uri);
+            }
+            $val['uri'] = $uri;
+            $values[$language][$key] = json_encode($val);
+          }
+        }
+        $contenthub_entity->getAttribute($name)->setValues($values);
+      }
+    }
   }
 }
-
 
 /**
  * Implements hook_entity_base_field_info().
  */
 function ibm_contenthub_linkfield_entity_base_field_info(EntityTypeInterface $entity_type) {
   if ($entity_type->id() === 'node') {
-    /** @var \Drupal\acquia_contenthub\EntityManager $entity_manager * */
-    $entity_manager = \Drupal::service("acquia_contenthub.entity_manager");
-    $node_enabled = FALSE;
-
-    $bundle = $entity_type->getBundleEntityType();
-
-    /** @var \Drupal\acquia_contenthub\Entity\ContentHubEntityTypeConfig $node_config_entity */
-    if ($node_config_entity = $entity_manager->getContentHubEntityTypeConfigurationEntity('node')) {
-      $node_enabled = $node_config_entity->isEnableIndex('node');
-    }
-
-    if ($node_enabled) {
-      $fields = array();
-      $fields[IBM_CONTENTHUB_LINKFIELD_LINK_NODE_PATH] = BaseFieldDefinition::create('entity_reference')
-        ->setLabel(t('Node dependencies'))
-        ->setDescription(t('Computed field to add entity dependencies to node entities in link field paths.'))
-        ->setComputed(TRUE)
-        ->setCustomStorage(TRUE)
-        ->setClass('\\Drupal\\ibm_contenthub_linkfield\\Field\\EntityReferenceLinkField');
-      $fields[IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT] = BaseFieldDefinition::create('entity_reference')
-        ->setLabel(t('Node dependencies'))
-        ->setDescription(t('Computed field to add entity dependencies to node entities in link field fragments.'))
-        ->setComputed(TRUE)
-        ->setCustomStorage(TRUE)
-        ->setClass('\\Drupal\\ibm_contenthub_linkfield\\Field\\EntityReferenceLinkField');
-      return $fields;
-    }
+    $fields = [];
+    $fields[IBM_CONTENTHUB_LINKFIELD_LINK_NODE_PATH] = BaseFieldDefinition::create('entity_reference')
+      ->setLabel(t('Node dependencies'))
+      ->setDescription(t('Computed field to add entity dependencies to node entities in link field paths.'))
+      ->setComputed(TRUE)
+      ->setCustomStorage(TRUE)
+      ->setClass('\\Drupal\\ibm_contenthub_linkfield\\Field\\EntityReferenceLinkField');
+    $fields[IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT] = BaseFieldDefinition::create('entity_reference')
+      ->setLabel(t('Node dependencies'))
+      ->setDescription(t('Computed field to add entity dependencies to node entities in link field fragments.'))
+      ->setComputed(TRUE)
+      ->setCustomStorage(TRUE)
+      ->setClass('\\Drupal\\ibm_contenthub_linkfield\\Field\\EntityReferenceLinkField');
+    return $fields;
   }
 }
 
@@ -75,12 +91,10 @@ function ibm_contenthub_linkfield_entity_base_field_info(EntityTypeInterface $en
  * @return array
  *   The entities.
  */
-function ibm_contenthub_linkfield_extract_destination_entities(NodeInterface $entity, $field_name) {
+function ibm_contenthub_linkfield_extract_destination_entities(NodeInterface $entity) {
   $output = [];
-  $fields = $entity->getFields();
-  $global_link_fields = \Drupal::service('entity_field.manager')->getFieldMapByFieldType('link');
-  $link_fields = array_intersect(array_keys($fields), array_keys($global_link_fields['node']));
-  foreach ($link_fields as $field) {
+  $link_fields = ibm_contenthub_linkfield_locate_linkfields($entity);
+  foreach ($link_fields as $field => $item) {
     $values = $entity->get($field)->getValue();
     foreach ($values as $value) {
       $uri = !empty($value['uri']) ? $value['uri'] : FALSE;
@@ -91,12 +105,16 @@ function ibm_contenthub_linkfield_extract_destination_entities(NodeInterface $en
           $nid_path = $path['basename'];
           $nid_fragment = $parts['fragment'];
           if (is_numeric($nid_path)) {
-            $output[$field]['node_path']['nid'][] = $nid_path;
-            $output[$field]['node_path']['uuid'][] = ibm_contenthub_linkfield_get_node_uuid_from_nid($nid_path);
+            if ($uuid = ibm_contenthub_linkfield_get_node_uuid_from_nid($nid_path)) {
+              $output[$field]['node_path']['nid'][] = $nid_path;
+              $output[$field]['node_path']['uuid'][] = $uuid;
+            }
           }
           if (is_numeric($nid_fragment)) {
-            $output[$field]['node_fragment']['nid'][] = $nid_fragment;
-            $output[$field]['node_fragment']['uuid'][] = ibm_contenthub_linkfield_get_node_uuid_from_nid($nid_fragment);
+            if ($uuid = ibm_contenthub_linkfield_get_node_uuid_from_nid($nid_fragment)) {
+              $output[$field]['node_fragment']['nid'][] = $nid_fragment;
+              $output[$field]['node_fragment']['uuid'][] = ibm_contenthub_linkfield_get_node_uuid_from_nid($nid_fragment);
+            }
           }
         }
       }
@@ -119,4 +137,24 @@ function ibm_contenthub_linkfield_get_node_uuid_from_nid($nid) {
     ->fields('node', ['uuid']);
   $query->condition("node.nid", $nid);
   return $query->execute()->fetchField();
+}
+
+/**
+ * Locates all Link fields in the entity.
+ *
+ * @param \Drupal\node\NodeInterface $entity
+ *   A Node Entity.
+ *
+ * @return \Drupal\Core\Field\FieldItemList[]
+ *   An array of link fields.
+ */
+function ibm_contenthub_linkfield_locate_linkfields(NodeInterface $entity) {
+  $link_fields = [];
+  $fields = $entity->getFields();
+  foreach ($fields as $name => $field) {
+    if ($field->getFieldDefinition()->getType() == 'link') {
+      $link_fields[$name] = $field;
+    }
+  }
+  return $link_fields;
 }

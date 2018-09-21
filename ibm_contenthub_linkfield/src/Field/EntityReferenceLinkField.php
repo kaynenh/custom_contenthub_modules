@@ -1,11 +1,14 @@
 <?php
+
 namespace Drupal\ibm_contenthub_linkfield\Field;
 
 use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Field\EntityReferenceFieldItemList;
 
 /**
- * @internal
+ * Class EntityReferenceLinkField.
+ *
+ * @package Drupal\ibm_contenthub_linkfield\Field
  */
 class EntityReferenceLinkField extends EntityReferenceFieldItemList {
 
@@ -17,16 +20,18 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
       return;
     }
     $url_list = [];
-    $field_name = $this->getFieldDefinition()->getName();
-    $values = ibm_contenthub_linkfield_extract_destination_entities($this->getEntity(), $field_name);
+    $nids = $this->generateLinkIds();
     // If we found an internal path that points to an existent entity.
-    if (!empty($values[$field_name]) && $this->getSetting('target_type') === 'node') {
+    if (!empty($nids) && $this->getSetting('target_type') === 'node') {
       /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
       $entity_type_manager = \Drupal::entityTypeManager();
-      if ($values = $entity_type_manager->getStorage('node')->load($values['id'])) {
+      if ($entities = $entity_type_manager->getStorage('node')->loadMultiple($nids)) {
         // Create an entity reference attribute so that the entity it
         // points to becomes a dependency of the "redirect" entity.
-        $url_list[] = $this->createItem(0, $values->id());
+        $delta = 0;
+        foreach ($entities as $entity) {
+          $url_list[] = $this->createItem($delta++, $entity->id());
+        }
       }
     }
     $this->list = $url_list;
@@ -37,7 +42,6 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
    */
   public function getValue($include_computed = FALSE) {
     $this->initList();
-
     return parent::getValue($include_computed);
   }
 
@@ -45,16 +49,28 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
    * {@inheritdoc}
    */
   public function access($operation = 'view', AccountInterface $account = NULL, $return_as_object = FALSE) {
-    return $this->getEntity()
-      ->get('redirect_redirect')
-      ->access($operation, $account, $return_as_object);
+    $this->getFieldDefinition()->getName();
+
+    // Here are only assigning the view permission to the field the same
+    // permission as the first link field in the entity. If no link field with
+    // appropriate values were found then FALSE is returned.
+    $link_fields = ibm_contenthub_linkfield_extract_destination_entities($this->getEntity());
+    $field_name = reset(array_keys($link_fields));
+    // Taking the first link field.
+    if ($field_name) {
+      return $this->getEntity()
+        ->get($field_name)
+        ->access($operation, $account, $return_as_object);
+    }
+    return FALSE;
   }
 
   /**
    * {@inheritdoc}
    */
   public function isEmpty() {
-    return $this->getEntity()->get('redirect_redirect')->isEmpty();
+    $link_fields = $this->generateLinkIds();
+    return empty($link_fields);
   }
 
   /**
@@ -62,7 +78,6 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
    */
   public function getIterator() {
     $this->initList();
-
     return parent::getIterator();
   }
 
@@ -71,8 +86,61 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
    */
   public function get($index) {
     $this->initList();
-
     return parent::get($index);
+  }
+
+  /**
+   * Generate the list of UUIDs for this field.
+   *
+   * @return array
+   *   An array of UUIDs.
+   */
+  public function generateLinkUuids() {
+    $uuids = [];
+    $link_fields = ibm_contenthub_linkfield_extract_destination_entities($this->getEntity());
+    switch ($this->getFieldDefinition()->getName()) {
+      case IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT:
+        $item = 'node_fragment';
+        break;
+
+      case IBM_CONTENTHUB_LINKFIELD_LINK_NODE_PATH:
+      default:
+        $item = 'node_path';
+        break;
+    }
+    foreach ($link_fields as $name => $data) {
+      if (isset($data[$item]['uuid']) && count($data[$item]['uuid']) > 0) {
+        $uuids = array_merge($uuids, $data[$item]['uuid']);
+      }
+    }
+    return array_unique($uuids);
+  }
+
+  /**
+   * Generate the list of Entity IDs for this field.
+   *
+   * @return array
+   *   An array of NIDs.
+   */
+  public function generateLinkIds() {
+    $nids = [];
+    $link_fields = ibm_contenthub_linkfield_extract_destination_entities($this->getEntity());
+    switch ($this->getFieldDefinition()->getName()) {
+      case IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT:
+        $item = 'node_fragment';
+        break;
+
+      case IBM_CONTENTHUB_LINKFIELD_LINK_NODE_PATH:
+      default:
+        $item = 'node_path';
+        break;
+    }
+    foreach ($link_fields as $name => $data) {
+      if (isset($data[$item]['nid']) && count($data[$item]['nid']) > 0) {
+        $nids = array_merge($nids, $data[$item]['nid']);
+      }
+    }
+    return array_unique($nids);
   }
 
 }
