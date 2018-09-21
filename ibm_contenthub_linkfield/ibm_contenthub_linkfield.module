@@ -74,64 +74,62 @@ function ibm_contenthub_linkfield_acquia_contenthub_cdf_from_drupal_alter(Conten
  * @param \Acquia\ContentHubClient\Entity $contenthub_entity
  *   The Content Hub CDF.
  */
-function sdsdibm_contenthub_linkfield_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $contenthub_entity) {
+function ibm_contenthub_linkfield_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $contenthub_entity) {
   if ($contenthub_entity->getType() == 'node') {
 
-    /** @var \Drupal\Core\Entity\EntityRepositoryInterface $entity_repository */
-    $entity_repository = \Drupal::service("entity.repository");
-
-    // Always check that the changes have already been applied, because the
-    // normalizer could be called more than once during the export process.
-    if ($contenthub_entity->getAttribute('language') === FALSE) {
-      $language_field = $contenthub_entity->getAttribute('langcode');
-      $contenthub_entity['attributes']['language'] = $language_field;
-    }
+    // Obtaining the bundle.
+    $bundle_attribute = $contenthub_entity->getAttribute('type');
+    $bundle = reset($bundle_attribute['value']);
 
     // Loading the two fields and checking which ones of those have data.
     $attribute_node_path = $contenthub_entity->getAttribute(IBM_CONTENTHUB_LINKFIELD_LINK_NODE_PATH);
     $attribute_node_fragment = $contenthub_entity->getAttribute(IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT);
 
-
-
-
-
     // Setting back the 'redirect_redirect' field.
-    if ($redirect_attribute) {
-      $redirect_redirect = new Attribute(Attribute::TYPE_ARRAY_STRING);
-      $values = $redirect_attribute['value'];
-      foreach ($values as $language => $value) {
-        $uuid = reset($value);
+    if ($attribute_node_path || $attribute_node_fragment) {
+      // Obtain the list of link fields for this particular bundle.
+      $link_fields = ibm_contenthub_linkfield_get_linkfields_for_bundle($bundle);
 
-        // Try to load the entity.
-        if ($entity = $entity_repository->loadEntityByUuid($entity_type, $uuid)) {
+      // Iterating over all link fields.
+      foreach ($link_fields as $name) {
+        $attribute = $contenthub_entity->getAttribute($name);
+        foreach ($attribute['value'] as $language => $item) {
+          foreach ($item as $key => $value) {
+            // Obtaining the URI to replace.
+            $val = json_decode($value, TRUE);
+            $uri = $val['uri'];
 
-          $redirect_redirect = (array) $redirect_redirect;
-          $url = $entity->toUrl();
-          // Setting the redirect value array.
+            // Replacing URI for node_paths.
+            if (isset($attribute_node_path['value'][$language])) {
+              $node_path_uuids = $attribute_node_path['value'][$language];
+              foreach ($node_path_uuids as $uuid) {
+                if ($nid = ibm_contenthub_linkfield_get_node_nid_from_uuid($uuid)) {
+                  $uri = str_replace($uuid, $nid, $uri);
+                }
+              }
+            }
 
-          $redirect_value = [
-            'uri' => 'internal:' . base_path() . $url->getInternalPath(),
-            'title' => NULL,
-            'options' => [],
-          ];
-          $json_value = json_encode($redirect_value, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
-          $redirect_redirect['value'] = [
-            $language => [
-              $json_value,
-            ],
-          ];
+            // Replacing URI for node_fragments.
+            if (isset($attribute_node_fragment['value'][$language])) {
+              $node_fragment_uuids = $attribute_node_fragment['value'][$language];
+              foreach ($node_fragment_uuids as $uuid) {
+                if ($nid = ibm_contenthub_linkfield_get_node_nid_from_uuid($uuid)) {
+                  $uri = str_replace($uuid, $nid, $uri);
+                }
+              }
+            }
+
+            $val['uri'] = $uri;
+            $attribute['value'][$language][$key] = json_encode($val);
+          }
         }
-        else {
-          // We did not find the entity then do not try to save this redirect.
-        }
+        $contenthub_entity['attributes'][$name] = $attribute;
       }
-      $contenthub_entity['attributes']['redirect_redirect'] = $redirect_redirect;
-      if ($entity_type === 'node') {
-        $contenthub_entity->removeAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE);
-      }
-      elseif ($entity_type == 'taxonomy_term') {
-        $contenthub_entity->removeAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM);
-      }
+
+      // Now safely remove these attributes so they are not used in the
+      // deserialization process.
+      $contenthub_entity->removeAttribute(IBM_CONTENTHUB_LINKFIELD_LINK_NODE_PATH);
+      $contenthub_entity->removeAttribute(IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT);
     }
   }
 }
@@ -200,7 +198,7 @@ function ibm_contenthub_linkfield_extract_destination_entities(NodeInterface $en
 }
 
 /**
- * Helper function to obtain the UUID from NID.
+ * Helper function to obtain the Node UUID, having the NID.
  *
  * @param int $nid
  *   The node nid.
@@ -212,6 +210,22 @@ function ibm_contenthub_linkfield_get_node_uuid_from_nid($nid) {
   $query = \Drupal::database()->select('node')
     ->fields('node', ['uuid']);
   $query->condition("node.nid", $nid);
+  return $query->execute()->fetchField();
+}
+
+/**
+ * Helper function to obtain the Node NID, having the UUID.
+ *
+ * @param string $uuid
+ *   The node UUID.
+ *
+ * @return string
+ *   The node NID.
+ */
+function ibm_contenthub_linkfield_get_node_nid_from_uuid($uuid) {
+  $query = \Drupal::database()->select('node')
+    ->fields('node', ['nid']);
+  $query->condition("node.uuid", $uuid);
   return $query->execute()->fetchField();
 }
 
@@ -233,4 +247,27 @@ function ibm_contenthub_linkfield_locate_linkfields(NodeInterface $entity) {
     }
   }
   return $link_fields;
+}
+
+/**
+ * Obtains the link fields for a particular node bundle.
+ *
+ * @param string $bundle
+ *   The node bundle.
+ *
+ * @return array
+ *   An array of link field names.
+ */
+function ibm_contenthub_linkfield_get_linkfields_for_bundle($bundle) {
+  /** @var \Drupal\Core\Entity\EntityFieldManager $entity_field_manager */
+  $entity_field_manager = \Drupal::service('entity_field.manager');
+  $fields = $entity_field_manager->getFieldDefinitions('node', $bundle);
+
+  // Obtain the list of link fields for this particular bundle.
+  foreach ($fields as $name => $field) {
+    if ($field->getType() == 'link') {
+      $link_fields[$name] = $field;
+    }
+  }
+  return array_keys($link_fields);
 }
