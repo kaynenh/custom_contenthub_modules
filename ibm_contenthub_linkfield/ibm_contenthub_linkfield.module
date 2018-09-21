@@ -23,7 +23,11 @@ const IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT = 'ibm_contenthub_link_node_fr
  *   The Content Hub CDF.
  */
 function ibm_contenthub_linkfield_acquia_contenthub_cdf_from_drupal_alter(ContentHubEntity $contenthub_entity) {
+  // Adding changes to the 'redirect' entity types.
+  if ($contenthub_entity->getType() == 'node') {
+    $bundle = $contenthub_entity->getAttribute('type')->getValue();
 
+  }
 }
 
 
@@ -35,6 +39,8 @@ function ibm_contenthub_linkfield_entity_base_field_info(EntityTypeInterface $en
     /** @var \Drupal\acquia_contenthub\EntityManager $entity_manager * */
     $entity_manager = \Drupal::service("acquia_contenthub.entity_manager");
     $node_enabled = FALSE;
+
+    $bundle = $entity_type->getBundleEntityType();
 
     /** @var \Drupal\acquia_contenthub\Entity\ContentHubEntityTypeConfig $node_config_entity */
     if ($node_config_entity = $entity_manager->getContentHubEntityTypeConfigurationEntity('node')) {

@@ -18,15 +18,15 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
     }
     $url_list = [];
     $field_name = $this->getFieldDefinition()->getName();
-    $entity = ibm_contenthub_linkfield_extract_destination_entities($this->getEntity(), $field_name);
+    $values = ibm_contenthub_linkfield_extract_destination_entities($this->getEntity(), $field_name);
     // If we found an internal path that points to an existent entity.
-    if ($entity !== FALSE && $this->getSetting('target_type') === $entity['type']) {
+    if (!empty($values[$field_name]) && $this->getSetting('target_type') === 'node') {
       /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
       $entity_type_manager = \Drupal::entityTypeManager();
-      if ($entity = $entity_type_manager->getStorage($entity['type'])->load($entity['id'])) {
+      if ($values = $entity_type_manager->getStorage('node')->load($values['id'])) {
         // Create an entity reference attribute so that the entity it
         // points to becomes a dependency of the "redirect" entity.
-        $url_list[] = $this->createItem(0, $entity->id());
+        $url_list[] = $this->createItem(0, $values->id());
       }
     }
     $this->list = $url_list;
