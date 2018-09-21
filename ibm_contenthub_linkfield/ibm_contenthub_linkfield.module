@@ -61,6 +61,82 @@ function ibm_contenthub_linkfield_acquia_contenthub_cdf_from_drupal_alter(Conten
 }
 
 /**
+ * Allows modules to modify the CDF before converting to Drupal Entity.
+ *
+ * Common Data Format (CDF): https://docs.acquia.com/content-hub/cdf.
+ *
+ * This is useful to modify the CDF that has been fetched from the Content
+ * Hub before it has been converted to Drupal Entity during the denormalization
+ * process.
+ * Note that we these changes affect the local entity imported from Content Hub
+ * but do not affect the entity in Content Hub itself.
+ *
+ * @param \Acquia\ContentHubClient\Entity $contenthub_entity
+ *   The Content Hub CDF.
+ */
+function sdsdibm_contenthub_linkfield_acquia_contenthub_cdf_from_hub_alter(ContentHubEntity $contenthub_entity) {
+  if ($contenthub_entity->getType() == 'node') {
+
+    /** @var \Drupal\Core\Entity\EntityRepositoryInterface $entity_repository */
+    $entity_repository = \Drupal::service("entity.repository");
+
+    // Always check that the changes have already been applied, because the
+    // normalizer could be called more than once during the export process.
+    if ($contenthub_entity->getAttribute('language') === FALSE) {
+      $language_field = $contenthub_entity->getAttribute('langcode');
+      $contenthub_entity['attributes']['language'] = $language_field;
+    }
+
+    // Loading the two fields and checking which ones of those have data.
+    $attribute_node_path = $contenthub_entity->getAttribute(IBM_CONTENTHUB_LINKFIELD_LINK_NODE_PATH);
+    $attribute_node_fragment = $contenthub_entity->getAttribute(IBM_CONTENTHUB_LINKFIELD_LINK_NODE_FRAGMENT);
+
+
+
+
+
+    // Setting back the 'redirect_redirect' field.
+    if ($redirect_attribute) {
+      $redirect_redirect = new Attribute(Attribute::TYPE_ARRAY_STRING);
+      $values = $redirect_attribute['value'];
+      foreach ($values as $language => $value) {
+        $uuid = reset($value);
+
+        // Try to load the entity.
+        if ($entity = $entity_repository->loadEntityByUuid($entity_type, $uuid)) {
+
+          $redirect_redirect = (array) $redirect_redirect;
+          $url = $entity->toUrl();
+          // Setting the redirect value array.
+
+          $redirect_value = [
+            'uri' => 'internal:' . base_path() . $url->getInternalPath(),
+            'title' => NULL,
+            'options' => [],
+          ];
+          $json_value = json_encode($redirect_value, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+          $redirect_redirect['value'] = [
+            $language => [
+              $json_value,
+            ],
+          ];
+        }
+        else {
+          // We did not find the entity then do not try to save this redirect.
+        }
+      }
+      $contenthub_entity['attributes']['redirect_redirect'] = $redirect_redirect;
+      if ($entity_type === 'node') {
+        $contenthub_entity->removeAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE);
+      }
+      elseif ($entity_type == 'taxonomy_term') {
+        $contenthub_entity->removeAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM);
+      }
+    }
+  }
+}
+
+/**
  * Implements hook_entity_base_field_info().
  */
 function ibm_contenthub_linkfield_entity_base_field_info(EntityTypeInterface $entity_type) {
