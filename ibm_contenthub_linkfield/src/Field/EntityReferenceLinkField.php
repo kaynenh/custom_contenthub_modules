@@ -2,6 +2,7 @@
 
 namespace Drupal\ibm_contenthub_linkfield\Field;
 
+use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Field\EntityReferenceFieldItemList;
 
@@ -64,7 +65,7 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
         ->get($field_name)
         ->access($operation, $account, $return_as_object);
     }
-    return FALSE;
+    return AccessResult::forbidden();
   }
 
   /**
