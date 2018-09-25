@@ -54,7 +54,8 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
     // Here are only assigning the view permission to the field the same
     // permission as the first link field in the entity. If no link field with
     // appropriate values were found then FALSE is returned.
-    $link_fields = ibm_contenthub_linkfield_extract_destination_entities($this->getEntity());
+    $entity = $this->getEntity();
+    $link_fields = ibm_contenthub_linkfield_extract_destination_entities($entity);
     $field_name = reset(array_keys($link_fields));
     // Taking the first link field.
     if ($field_name) {
