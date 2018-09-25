@@ -56,7 +56,8 @@ class EntityReferenceLinkField extends EntityReferenceFieldItemList {
     // appropriate values were found then FALSE is returned.
     $entity = $this->getEntity();
     $link_fields = ibm_contenthub_linkfield_extract_destination_entities($entity);
-    $field_name = reset(array_keys($link_fields));
+    $names = array_keys($link_fields);
+    $field_name = reset($names);
     // Taking the first link field.
     if ($field_name) {
       return $this->getEntity()
