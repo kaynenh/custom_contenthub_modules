@@ -1,4 +1,5 @@
 <?php
+
 namespace Drupal\ibm_contenthub_redirect\Field;
 
 use Drupal\Core\Session\AccountInterface;

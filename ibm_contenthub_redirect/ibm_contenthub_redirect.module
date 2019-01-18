@@ -1,5 +1,9 @@
 <?php
 
+/**
+ * @file
+ */
+
 use Drupal\Core\Entity\EntityTypeInterface;
 use Drupal\Core\Field\BaseFieldDefinition;
 use Acquia\ContentHubClient\Entity as ContentHubEntity;
@@ -41,7 +45,7 @@ function ibm_contenthub_redirect_acquia_contenthub_cdf_from_drupal_alter(Content
       // confuse the denormalization of the entity as we will have to re-
       // create the deleted attribute before importing.
       if ($contenthub_entity->getAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE) !== FALSE ||
-          $contenthub_entity->getAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM) !== FALSE ) {
+          $contenthub_entity->getAttribute(IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_TERM) !== FALSE) {
         $contenthub_entity->removeAttribute('redirect_redirect');
       }
     }
@@ -94,7 +98,6 @@ function ibm_contenthub_redirect_acquia_contenthub_cdf_from_hub_alter(ContentHub
           $redirect_redirect = (array) $redirect_redirect;
           $url = $entity->toUrl();
           // Setting the redirect value array.
-
           $redirect_value = [
             'uri' => 'internal:' . base_path() . $url->getInternalPath(),
             'title' => NULL,
@@ -137,7 +140,7 @@ function ibm_contenthub_redirect_entity_base_field_info(EntityTypeInterface $ent
     }
 
     if ($redirect_enabled) {
-      $fields = array();
+      $fields = [];
       $fields[IBM_CONTENTHUB_REDIRECT_ATTRIBUTE_NODE] = BaseFieldDefinition::create('entity_reference')
         ->setLabel(t('Redirect dependencies'))
         ->setDescription(t('Computed field to add entity dependencies to node redirect entities.'))
