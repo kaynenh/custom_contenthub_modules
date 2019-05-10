@@ -139,14 +139,16 @@ function audit_acquia_contenthub_audit_publisher(array $entities, $republish, $d
       else {
         // These entities have been published and are in sync with Content Hub
         // but the drupal entity does not exist anymore. Delete automatically.
-        audit_acquia_contenthub_audit_publisher_delete_remote_entity($client_manager, $connection, $entity->entity_type, $entity->entity_uuid);
-        drush_print(dt('Entity exists in the tracking table and its in sync with Content Hub but the entity does not exist in Drupal. Deleting: Entity Type = @type, UUID = @uuid, ID = @id, Modified (local) = @lmodified, Modified (remote) = @rmodified', [
-          '@type' => $entity->entity_type,
-          '@uuid' => $entity->entity_uuid,
-          '@id' => $entity->entity_id,
-          '@lmodified' => $entity->modified,
-          '@rmodified' => $ch_entity ? $ch_entity->getModified() : dt('Not found in Content Hub'),
-        ]));
+        if ($delete) {
+          audit_acquia_contenthub_audit_publisher_delete_remote_entity($client_manager, $connection, $entity->entity_type, $entity->entity_uuid);
+          drush_print(dt('Entity exists in the tracking table and its in sync with Content Hub but the entity does not exist in Drupal. Deleting: Entity Type = @type, UUID = @uuid, ID = @id, Modified (local) = @lmodified, Modified (remote) = @rmodified', [
+            '@type' => $entity->entity_type,
+            '@uuid' => $entity->entity_uuid,
+            '@id' => $entity->entity_id,
+            '@lmodified' => $entity->modified,
+            '@rmodified' => $ch_entity ? $ch_entity->getModified() : dt('Not found in Content Hub'),
+          ]));
+        }
         $context['results']['deleted']++;
       }
     }
@@ -202,14 +204,16 @@ function audit_acquia_contenthub_audit_publisher(array $entities, $republish, $d
       if (empty($entity_id)) {
         // Entity exists in Content Hub and the tracking table, but does not exist in Drupal.
         // Delete from tracking table and Content Hub.
-        audit_acquia_contenthub_audit_publisher_delete_remote_entity($client_manager, $connection, $entity->entity_type, $entity->entity_uuid);
-        // The drupal entity could not be loaded.
-        drush_set_error(dt('This entity exists in the tracking table but could not be loaded in Drupal. Deleting.: Entity Type = @type, UUID = @uuid, ID = @id, Modified = @modified', [
-          '@type' => $entity->entity_type,
-          '@uuid' => $entity->entity_uuid,
-          '@id' => $entity->entity_id,
-          '@modified' => $entity->modified,
-        ]));
+        if ($delete) {
+          audit_acquia_contenthub_audit_publisher_delete_remote_entity($client_manager, $connection, $entity->entity_type, $entity->entity_uuid);
+          // The drupal entity could not be loaded.
+          drush_set_error(dt('This entity exists in the tracking table but could not be loaded in Drupal. Deleting.: Entity Type = @type, UUID = @uuid, ID = @id, Modified = @modified', [
+            '@type' => $entity->entity_type,
+            '@uuid' => $entity->entity_uuid,
+            '@id' => $entity->entity_id,
+            '@modified' => $entity->modified,
+          ]));
+        }
         $context['results']['deleted']++;
       }
     }
@@ -326,7 +330,7 @@ function audit_acquia_contenthub_audit_publisher_delete($start, $delete, $operat
           '@uuid' => $entity['uuid'],
         ]));
         // Delete the entity from Content hub.
-        if ($client_manager->createRequest('deleteEntity', [$entity['uuid']])) {
+        if ($delete && $client_manager->createRequest('deleteEntity', [$entity['uuid']])) {
           $context['results']['ch_deleted']++;
         }
       }
