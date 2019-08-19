@@ -1,9 +1,7 @@
 <?php
-
 use Acquia\ContentHubClient\Entity as ContentHubEntity;
 use Drupal\acquia_contenthub\ContentHubEntitiesTracking;
 use Drupal\user\Entity\User;
-
 /**
  * Compares entities in the tracking table with Content Hub.
  *
@@ -23,6 +21,7 @@ use Drupal\user\Entity\User;
  * @return mixed|false
  *   Drush Output.
  */
+drush_print("* Batch functions loaded *");
 function audit_acquia_contenthub_subscriber_audit_subscriber(array $entities, $import, $operation_key, $delete, &$context) {
   $time = time();
   \Drupal::state()->set('ach_as_running', $time);
@@ -39,16 +38,13 @@ function audit_acquia_contenthub_subscriber_audit_subscriber(array $entities, $i
   if (!$client_manager->isConnected()) {
     return drush_set_error(dt('The Content Hub client is not connected. No operations could be performed.'));
   }
-
   // Collect UUIDs.
   $uuids = [];
   foreach ($entities as $entity) {
     $uuids[] = $entity->entity_uuid;
   }
-
   /** @var \Acquia\ContentHubClient\Entity[] $ch_entities */
   $ch_entities = audit_acquia_contenthub_audit_subscriber_get_ch_entities($uuids, 10);
-
   if ($ch_entities === FALSE) {
     die('ERROR: Request to Content Hub failed.');
   }
@@ -57,6 +53,7 @@ function audit_acquia_contenthub_subscriber_audit_subscriber(array $entities, $i
     $uuid = $entity->entity_uuid;
     $ch_entity = isset($ch_entities[$uuid]) ? $ch_entities[$uuid] : FALSE;
     if (!$ch_entity) {
+    if ($delete) {
       // Entity is in the tracking table, but does not exist in Content Hub. Delete it.
       $drupal_entity = \Drupal::service("entity.repository")
         ->loadEntityByUuid($entity->entity_type, $entity->entity_uuid);
@@ -87,8 +84,8 @@ function audit_acquia_contenthub_subscriber_audit_subscriber(array $entities, $i
           }
         }
       }
-
       $context['results']['deleted']++;
+    }
     }
     else {
       // Entity exists in Content Hub.
@@ -102,7 +99,6 @@ function audit_acquia_contenthub_subscriber_audit_subscriber(array $entities, $i
           '@lmodified' => $entity->modified,
           '@rmodified' => $ch_entity->getModified(),
         ]));
-
         $context['results']['outdated']++;
         $should_import = TRUE;
       }
@@ -116,12 +112,10 @@ function audit_acquia_contenthub_subscriber_audit_subscriber(array $entities, $i
             '@id' => $entity->entity_id,
             '@modified' => $entity->modified,
           ]));
-
           $should_import = TRUE;
           $context['results']['missing']++;
         }
       }
-
       if ($should_import && $import) {
         /** @var \Drupal\acquia_contenthub\Controller\ContentHubEntityExportController $export_controller */
         $import_manager = \Drupal::service("acquia_contenthub.import_entity_manager");
@@ -131,14 +125,12 @@ function audit_acquia_contenthub_subscriber_audit_subscriber(array $entities, $i
     }
     $context['results']['total_processed']++;
   }
-
   // Print the status.
   $duration = date_diff($context['results']['start_date'], date_create());
   audit_acquia_contenthub_audit_subscriber_print_status($context['results']['total_processed'], $duration, 2, $context['results']['print']);
   // Update the last processed operation state variable.
   \Drupal::state()->set(ACH_AS_LAST_PROCESSED_OPERATION, $operation_key);
 }
-
 function audit_acquia_contenthub_subscriber_audit_subscriber_find_missing_imports($contenthub_filter_id, $start, $size, $reimport, $operation_key, &$context) {
   \Drupal::state()->set('ach_as_running', time());
   if (empty($context['sandbox'])) {
@@ -147,17 +139,13 @@ function audit_acquia_contenthub_subscriber_audit_subscriber_find_missing_import
     $context['results']['ch_start_date'] = !empty($context['results']['ch_start_date']) ? $context['results']['ch_start_date'] : date_create();
     $context['results']['print'] = !empty($context['results']['print']) ? $context['results']['print'] : FALSE;
   }
-
   $contenthub_filter = \Drupal::entityTypeManager()->getStorage('contenthub_filter')->load($contenthub_filter_id);
-
   /* @var \Drupal\acquia_contenthub\ContentHubSearch $contenthub_search */
   $contenthub_search = \Drupal::service('acquia_contenthub.acquia_contenthub_search');
-  $entities = $contenthub_search->getContentHubFilteredEntities($contenthub_filter, $start, $size);
+  $entities = getContentHubFilteredEntities($contenthub_filter, $start, $size);
   $context['results']['ch_total_processed'] += count($entities);
-
   unset($entities['total']);
   $uuids = array_keys($entities);
-
   $uuids_chunk = array_chunk($uuids, 10);
   $uuids_found = [];
   foreach ($uuids_chunk as $uuids_list) {
@@ -172,7 +160,6 @@ function audit_acquia_contenthub_subscriber_audit_subscriber_find_missing_import
     //drush_print_r($new_uuids_found);
     $uuids_found = array_merge($uuids_found, $new_uuids_found);
   }
-
   // These are the entities that exist in Content Hub but not in the local
   // tracking table for publishers.
   $uuids_missing = array_diff($uuids, $uuids_found);
@@ -184,34 +171,27 @@ function audit_acquia_contenthub_subscriber_audit_subscriber_find_missing_import
       // Re-import missing entities.
       /* @var \Drupal\acquia_contenthub\ImportEntityManager $import_entity_manager */
       $import_entity_manager = \Drupal::service('acquia_contenthub.import_entity_manager');
-
       // Determine the author UUID for the nodes to be created.
       // Assign the appropriate author for this filter (User UUID).
       $uid = $contenthub_filter->author;
       $user = User::load($uid);
-
       // If filter condition evaluates to TRUE, save entity with dependencies.
       // Get the Status from the Filter Information.
       $status = $contenthub_filter->getPublishStatus();
-
       // Re-importing or re-queuing entities matching the filter that were not
       // previously imported.
       $import_entity_manager->import($uuid, TRUE, $user->uuid(), $status ? $status : NULL);
     }
-
     drush_print(dt('Importing entity with UUID = !uuid and type = !type that matches filter "!filter" and was not previously imported.', [
       '!type' => $entities[$uuid]->getType(),
       '!uuid' => $uuid,
       '!filter' => $contenthub_filter_id,
     ]));
-
   }
-
   $duration = date_diff($context['results']['ch_start_date'], date_create());
   audit_acquia_contenthub_audit_subscriber_print_status($context['results']['ch_total_processed'], $duration, 2, $context['results']['print']);
   \Drupal::state()->set('ach_as_last_processed_operation', $operation_key);
 }
-
 /**
  * Prints results from the comparison of the tracking table with Content Hub.
  *
@@ -228,10 +208,9 @@ function audit_acquia_contenthub_subscriber_audit_subscriber_finished($success, 
   if ($success) {
     drush_print(dt(str_repeat('-', 80)));
     drush_print(dt('Batch completed successfully. The results are:'));
-    $duration = date_diff($results['start_date'], date_create());
-    drush_print(dt('@total entities processed from the tracking table within @duration.', [
+    //$duration = date_diff($results['start_date'], date_create());
+    drush_print(dt('@total entities processed.', [
       '@total' => number_format($results['total_processed']),
-      '@duration' => audit_acquia_contenthub_audit_subscriber_generate_duration_message($duration),
     ]));
     drush_print(dt(' - @total entities deleted from Drupal and tracking table.', [
       '@total' => number_format($results['deleted']),
@@ -242,11 +221,9 @@ function audit_acquia_contenthub_subscriber_audit_subscriber_finished($success, 
     drush_print(dt(' - @total entities outdated in tracking table.', [
       '@total' => number_format($results['outdated']),
     ]));
-
-    $duration = date_diff($results['ch_start_date'], date_create());
-    drush_print(dt('@total entities processed from the tracking table within @duration.', [
+    //$duration = date_diff($results['ch_start_date'], date_create());
+    drush_print(dt('@total entities processed.', [
       '@total' => number_format($results['ch_total_processed']),
-      '@duration' => audit_acquia_contenthub_audit_subscriber_generate_duration_message($duration),
     ]));
     drush_print(dt('Total number of Content Hub entities not found in tracking table: @total', [
       '@total' => number_format($results['ch_missing']),
@@ -256,7 +233,6 @@ function audit_acquia_contenthub_subscriber_audit_subscriber_finished($success, 
     drush_print(dt('Finished with a PHP fatal error.'));
   }
 }
-
 function audit_acquia_contenthub_audit_subscriber_entity_exists($entity) {
   // Try to find the entity locally.
   $entity_type = \Drupal::entityTypeManager()->getStorage($entity->entity_type)->getEntityType();
@@ -267,14 +243,11 @@ function audit_acquia_contenthub_audit_subscriber_entity_exists($entity) {
     ->condition("$table.$id_col", $entity->entity_id)
     ->execute()
     ->fetchField();
-
   if ($entity_id) {
     return TRUE;
   }
-
   return FALSE;
 }
-
 /**
  * Prints the total number of processed entities, and the duration.
  *
@@ -286,13 +259,11 @@ function audit_acquia_contenthub_audit_subscriber_entity_exists($entity) {
 function audit_acquia_contenthub_audit_subscriber_print_status($total, DateInterval $duration, int $interval = 0, bool &$print = FALSE) {
   $duration_hours = $duration->h;
   $duration_minutes = $duration->i;
-
   if (($duration_hours !== 0 || $duration_minutes !== 0 ) && $duration_minutes % $interval === 0 && $print === TRUE) {
     // The interval has passed.
     // Print message.
-    $message = dt('@total entities processed within @duration.', [
+    $message = dt('@total entities processed.', [
       '@total' => number_format($total),
-      '@duration' => audit_acquia_contenthub_audit_subscriber_generate_duration_message($duration),
     ]);
     drush_print($message);
     // Only print the duration once within the interval.
@@ -304,11 +275,9 @@ function audit_acquia_contenthub_audit_subscriber_print_status($total, DateInter
     $print = TRUE;
   }
 }
-
 function audit_acquia_contenthub_audit_subscriber_get_ch_entities($uuids, $size = 25) {
   /** @var \Drupal\acquia_contenthub\Client\ClientManager $client_manager */
   $client_manager = \Drupal::service('acquia_contenthub.client_manager');
-
   $chunks = array_chunk($uuids, $size);
   $objects = [];
   foreach ($chunks as $chunk) {
@@ -345,7 +314,6 @@ function audit_acquia_contenthub_audit_subscriber_get_ch_entities($uuids, $size 
   }
   return $objects;
 }
-
 //function audit_acquia_contenthub_audit_subscriber_generate_duration_message(DateTimeInterface $start_date, DateTimeInterface $end_date, int $interval = 0, bool &$print) {
 //  if (empty($end_date)) {
 //    $end_date = date_create();
@@ -381,12 +349,10 @@ function audit_acquia_contenthub_audit_subscriber_get_ch_entities($uuids, $size 
 //
 //  return $duration_message;
 //}
-
 function audit_acquia_contenthub_audit_subscriber_generate_duration_message(DateInterval $duration) {
   $duration_hours = $duration->h;
   $duration_minutes = $duration->i;
   $duration_message_parts = [];
-
   // Hours.
   if ($duration_hours > 0) {
     $duration_message_parts[0] = $duration_hours . ' hour';
@@ -394,7 +360,6 @@ function audit_acquia_contenthub_audit_subscriber_generate_duration_message(Date
       $duration_message_parts[0] .= 's';
     }
   }
-
   // Minutes.
   if ($duration_minutes > 0) {
     $duration_message_parts[1] = $duration_minutes . ' minute';
@@ -402,6 +367,175 @@ function audit_acquia_contenthub_audit_subscriber_generate_duration_message(Date
       $duration_message_parts[1] .= 's';
     }
   }
-
   return implode(' ', $duration_message_parts);
+}
+function getContentHubFilteredEntities($contenthub_filter, $start = 0, $size = 1000) {
+  $options = [
+    'start' => $start,
+    'count' => $size,
+  ];
+  // Obtain the Filter conditions.
+  $conditions = $contenthub_filter->getConditions();
+  if (!empty($conditions)) {
+    $items = getElasticSearchQueryResponse($conditions, NULL, NULL, $options);
+    $entities = [
+      'total' => $items['total']
+    ];
+    foreach ($items['hits'] as $item) {
+      $entities[$item['_source']['data']['uuid']] = new  ContentHubEntity($item['_source']['data']);
+    }
+    return $entities;
+  }
+  // If we reach here, return empty array.
+  return [];
+}
+function getElasticSearchQueryResponse(array $conditions, $asset_uuid, $asset_type, array $options = []) {
+  $query = [
+    'query' => [
+      'bool' => [
+        'must' => [],
+        'should' => [],
+      ],
+    ],
+    'size' => !empty($options['count']) ? $options['count'] : 10,
+    'from' => !empty($options['start']) ? $options['start'] : 0,
+    'highlight' => [
+      'fields' => [
+        '*' => new \stdClass(),
+      ],
+    ],
+  ];
+  // Supported Entity Types and Bundles.
+  $supported_entity_types_bundles = acquia_contenthub_subscriber_supported_entity_types_and_bundles();
+  // Iterating over each condition.
+  foreach ($conditions as $condition) {
+    list($filter, $value) = explode(':', $condition);
+    // Tweak ES query for each filter condition.
+    switch ($filter) {
+      // For entity types.
+      case 'entity_types':
+        $query['query']['bool']['should'][] = [
+          'terms' => [
+            'data.type' => explode(',', $value),
+          ],
+        ];
+        break;
+      // For bundles.
+      case 'bundle':
+        // Obtaining bundle_key for this bundle.
+        foreach ($supported_entity_types_bundles as $entity_type => $bundles) {
+          if (in_array($value, $bundles['bundles'])) {
+            $bundle_key = $bundles['bundle_key'];
+            break;
+          }
+        }
+        if (empty($bundle_key)) {
+          break;
+        }
+        // Test all supported languages.
+        $supported_languages = array_keys(\Drupal::languageManager()->getLanguages(3));
+        foreach ($supported_languages as $supported_language) {
+          $query['query']['bool']['should'][] = [
+            'term' => [
+              "data.attributes.{$bundle_key}.value.{$supported_language}" => $value,
+            ],
+          ];
+        }
+        break;
+      // For Search Term (Keyword).
+      case 'search_term':
+        if (!empty($value)) {
+          $query['query']['bool']['must'][] = [
+            'match' => [
+              "_all" => "*{$value}*",
+            ],
+          ];
+        }
+        break;
+      // For Tags.
+      case 'tags':
+        $query['query']['bool']['must'][] = [
+          'match' => [
+            "_all" => $value,
+          ],
+        ];
+        break;
+      // For Origin / Source.
+      case 'origins':
+        $query['query']['bool']['must'][] = [
+          'match' => [
+            "_all" => $value,
+          ],
+        ];
+        break;
+      case 'modified':
+        $dates = explode('to', $value);
+        $from = isset($dates[0]) ? trim($dates[0]) : '';
+        $to = isset($dates[1]) ? trim($dates[1]) : '';
+        if (!empty($from)) {
+          $date_modified['gte'] = $from;
+        }
+        if (!empty($to)) {
+          $date_modified['lte'] = $to;
+        }
+        $date_modified['time_zone'] = '+1:00';
+        $query['query']['bool']['must'][] = [
+          'range' => [
+            "data.modified" => $date_modified,
+          ],
+        ];
+        break;
+    }
+  }
+  if (!empty($options['sort']) && strtolower($options['sort']) !== 'relevance') {
+    $query['sort']['data.modified'] = strtolower($options['sort']);
+  }
+  if (isset($asset_uuid)) {
+    // This part of the query references the entity UUID and goes in its
+    // separate "must" condition to only filter this single entity.
+    $query_filter['query']['bool']['must'][] = [
+      'term' => [
+        '_id' => $asset_uuid,
+      ],
+    ];
+    // This part of the query is to filter all entities according to the
+    // content hub filter selection and it goes on its own "must" condition.
+    $query_filter['query']['bool']['must'][] = $query['query'];
+    // Together, they verify if a particular content hub filter applies to
+    // an entity UUID or not.
+    $query = $query_filter;
+  }
+  /* @var \Drupal\acquia_contenthub\ContentHubSearch $contenthub_search */
+  $contenthub_search = \Drupal::service('acquia_contenthub.acquia_contenthub_search');
+  return $contenthub_search->executeSearchQuery($query);
+}
+/**
+ * Obtains a list of supported entity types and bundles by this site.
+ *
+ * This also includes the 'bundle' key field. If the bundle key is empty this
+ * means that this entity does not have any bundle information.
+ *
+ * @return array
+ *   An array of entity_types and bundles keyed by entity_type.
+ */
+function acquia_contenthub_subscriber_supported_entity_types_and_bundles() {
+  /** @var \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager */
+  $entity_manager = \Drupal::getContainer()->get('acquia_contenthub.entity_manager');
+  /** @var \Drupal\acquia_contenthub\EntityManager $entity_manager */
+  $entity_type_manager = \Drupal::entityTypeManager();
+  $entity_types = $entity_manager->getAllowedEntityTypes();
+  $entity_types_and_bundles = [];
+  foreach ($entity_types as $entity_type => $bundles) {
+    if ($entity_type === 'taxonomy_term') {
+      $bundle_key = 'vocabulary';
+    }
+    else {
+      $bundle_key = $entity_type_manager->getDefinition($entity_type)->getKey('bundle');
+    }
+    $entity_types_and_bundles[$entity_type] = [
+      'bundle_key' => $bundle_key,
+      'bundles' => array_keys($bundles),
+    ];
+  }
+  return $entity_types_and_bundles;
 }
